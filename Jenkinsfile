@@ -1,4 +1,3 @@
-ubuntu@ip-172-31-1-51:~/project-jenkins$ cat Jenkinsfile 
 pipeline {
     agent any
 
@@ -77,4 +76,3 @@ pipeline {
         }
     }
 }
-ubuntu@ip-172-31-1-51:~/project-jenkins$ 
