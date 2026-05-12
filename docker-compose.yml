@@ -1,0 +1,78 @@
+services:
+  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: book-saas-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: book_saas_db
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - book-saas-network
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (Flask + SocketIO) ──────────────────────────────────────────────
+  backend:
+    # Changed from 'build' to 'image' so it uses the version pushed by Jenkins
+    image: p2511/book-saas-backend:latest
+    container_name: book-saas-backend
+    restart: unless-stopped
+    env_file: .env  # This automatically pulls all vars from your .env file
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/book_saas_db
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - book-saas-network
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:5000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Frontend (React + Vite + Nginx) ─────────────────────────────────────────
+  frontend:
+    # Changed from 'build' to 'image'
+    image: p2511/book-saas-frontend:latest
+    container_name: book-saas-frontend
+    restart: unless-stopped
+    networks:
+      - book-saas-network
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  book-saas-network:
+    driver: bridge
+    name: book-saas-network
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  mongodb_data:
+    name: book-saas-mongodb-data
+  mongodb_config:
+    name: book-saas-mongodb-config
+  backend_uploads:
+    name: book-saas-backend-uploads

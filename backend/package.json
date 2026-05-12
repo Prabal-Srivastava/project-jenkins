@@ -1,0 +1,9 @@
+{
+  "name": "purani-books-backend",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "start": "python wsgi.py",
+    "dev": "python wsgi.py"
+  }
+}
