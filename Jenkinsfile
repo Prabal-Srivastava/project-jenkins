@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY        = "docker.io/p2511" 
+        REGISTRY        = "docker.io/prabal2611" 
         REGISTRY_CREDS  = 'docker-registry-credentials' 
         
         BACKEND_IMAGE   = "${REGISTRY}/book-saas-backend"
