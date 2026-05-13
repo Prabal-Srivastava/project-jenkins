@@ -4,13 +4,9 @@ pipeline {
     environment {
         REGISTRY = "prabal2611"
         REGISTRY_CREDS = "docker-registry-credentials"
-
         BACKEND_IMAGE = "${REGISTRY}/book-saas-backend"
         FRONTEND_IMAGE = "${REGISTRY}/book-saas-frontend"
-
         IMAGE_TAG = "${BUILD_NUMBER}"
-
-        // Use secret file credential
         APP_ENV_FILE = credentials('book-saas-env-file')
         DEPLOY_DIR = "/opt/book-saas"
     }
@@ -18,17 +14,18 @@ pipeline {
     options {
         timeout(time: 40, unit: 'MINUTES')
         disableConcurrentBuilds()
-        buildDiscarder(logRotator(numToKeepStr: '3'))
+        // Aggressively keep only 2 builds to save disk space
+        buildDiscarder(logRotator(numToKeepStr: '2'))
     }
 
     stages {
         stage('Prepare Environment') {
             steps {
-                // Ensure the directory exists and the jenkins user can write to it
                 sh """
                     sudo mkdir -p ${DEPLOY_DIR}
                     sudo chown -R jenkins:jenkins ${DEPLOY_DIR}
-                    docker builder prune -f || true
+                    # Clean build cache before starting to free space
+                    docker builder prune -f
                 """
             }
         }
@@ -59,11 +56,8 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                // Using single quotes for APP_ENV_FILE to avoid the Groovy Interpolation warning
                 sh 'sudo cp $APP_ENV_FILE ' + "${DEPLOY_DIR}/.env"
                 sh "cp docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml"
-                
-                // We run compose from HERE but point to the file in /opt
                 sh """
                     docker compose -f ${DEPLOY_DIR}/docker-compose.yml pull
                     docker compose -f ${DEPLOY_DIR}/docker-compose.yml up -d --remove-orphans
@@ -74,13 +68,10 @@ pipeline {
     }
 
     post {
-        failure {
-            // Check logs without changing directory to /opt
-            sh "docker compose -f ${DEPLOY_DIR}/docker-compose.yml logs --tail=100 || true"
-        }
-
         always {
-            sh "docker image prune -f || true"
+            // Aggressive cleanup: -a removes all images not used by running containers
+            // This is vital for small disks (T2.micro/small)
+            sh 'docker system prune -af'
             cleanWs()
         }
     }
