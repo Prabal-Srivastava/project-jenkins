@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Updated to match your Docker Compose image prefix
         REGISTRY        = "docker.io/p2511" 
         REGISTRY_CREDS  = 'docker-registry-credentials' 
         
@@ -11,17 +10,28 @@ pipeline {
         
         APP_ENV_FILE    = credentials('book-saas-env-file') 
         DEPLOY_DIR      = "/opt/book-saas"
+        
+        // REDIRECT TEMP SPACE: Tells Java and NPM to use your main disk instead of /tmp
+        TMPDIR          = "${WORKSPACE}/tmp"
+        JAVA_OPTS       = "-Djava.io.tmpdir=${WORKSPACE}/tmp"
+        npm_config_cache = "${WORKSPACE}/.npm-cache"
     }
 
     options {
         timeout(time: 40, unit: 'MINUTES')
         disableConcurrentBuilds()
+        // Keeps only the last 3 builds to save disk space
+        buildDiscarder(logRotator(numToKeepStr: '3')) 
     }
 
     stages {
-        stage('Cleanup Workspace') {
+        stage('Emergency Cleanup') {
             steps {
-                // Ensure the deployment directory exists and is clean for the new config
+                echo "Clearing space before starting..."
+                // Create local temp dir
+                sh "mkdir -p ${WORKSPACE}/tmp"
+                // Remove any old containers or dangling layers that might be blocking the build
+                sh "docker system prune -f"
                 sh "sudo mkdir -p ${DEPLOY_DIR}"
                 sh "sudo chown jenkins:jenkins ${DEPLOY_DIR}"
             }
@@ -29,33 +39,35 @@ pipeline {
 
         stage('Build Backend') {
             steps {
+                echo "Building Backend (Memory Restricted)..."
+                // Limiting memory ensures the t3.micro doesn't freeze
                 sh "docker build --memory=512m -t ${BACKEND_IMAGE}:latest ./backend"
             }
         }
 
         stage('Build Frontend') {
             steps {
-                // React/Vite builds can be heavy on t3.micro
-                sh "docker build --memory=850m -t ${FRONTEND_IMAGE}:latest ./frontend"
+                echo "Building Frontend (NPM Cache Redirected)..."
+                // Using the environment variable set above to keep NPM out of /tmp
+                sh "docker build --memory=800m -t ${FRONTEND_IMAGE}:latest ./frontend"
             }
         }
 
         stage('Push & Deploy') {
             steps {
                 script {
-                    // Login and Push
+                    // Docker Hub Login
                     withCredentials([usernamePassword(credentialsId: "${env.REGISTRY_CREDS}", passwordVariable: 'PASS', usernameVariable: 'USER')]) {
                         sh 'echo "$PASS" | docker login -u "$USER" --password-stdin'
                         sh "docker push ${BACKEND_IMAGE}:latest"
                         sh "docker push ${FRONTEND_IMAGE}:latest"
                     }
 
-                    // Deploy
+                    // Prepare Deployment Files
                     sh "sudo cp ${APP_ENV_FILE} ${DEPLOY_DIR}/.env"
                     sh "cp docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml"
                     
                     dir(DEPLOY_DIR) {
-                        // pull ensures we get the latest images we just pushed
                         sh "docker compose pull" 
                         sh "docker compose up -d --remove-orphans"
                     }
@@ -66,7 +78,10 @@ pipeline {
 
     post {
         always {
+            echo "Post-build cleanup to keep disk below threshold..."
             sh "docker image prune -f"
+            // Deletes the temporary folder created in Workspace
+            sh "rm -rf ${WORKSPACE}/tmp"
             cleanWs()
         }
     }
