@@ -1,78 +1,126 @@
+```yaml
 services:
-  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  # ── MongoDB ────────────────────────────────────────────────────────────────
   mongodb:
     image: mongo:7.0
     container_name: book-saas-mongodb
     restart: unless-stopped
+
     environment:
       MONGO_INITDB_DATABASE: book_saas_db
+
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
+
     networks:
       - book-saas-network
-    ports:
-      - "27017:27017"
+
+    # Do NOT expose Mongo publicly unless needed
+    # ports:
+    #   - "27017:27017"
+
+    mem_limit: 700m
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Backend (Flask + SocketIO) ──────────────────────────────────────────────
+  # ── Backend (Flask + SocketIO) ────────────────────────────────────────────
   backend:
-    # Changed from 'build' to 'image' so it uses the version pushed by Jenkins
-    image: prabal2611/book-saas-backend:latest
+    image: prabal2611/book-saas-backend:${IMAGE_TAG:-latest}
     container_name: book-saas-backend
+
     restart: unless-stopped
-    env_file: .env  # This automatically pulls all vars from your .env file
+    pull_policy: always
+
+    env_file:
+      - .env
+
     environment:
       MONGO_URI: mongodb://mongodb:27017/book_saas_db
+
     volumes:
       - backend_uploads:/app/uploads
+
     networks:
       - book-saas-network
+
     ports:
       - "5000:5000"
+
+    mem_limit: 400m
+
     depends_on:
       mongodb:
         condition: service_healthy
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:5000/api/health')"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  # ── Frontend (React + Vite + Nginx) ─────────────────────────────────────────
+  # ── Frontend (React + Vite + Nginx) ───────────────────────────────────────
   frontend:
-    # Changed from 'build' to 'image'
-    image: prabal2611/book-saas-frontend:latest
+    image: prabal2611/book-saas-frontend:${IMAGE_TAG:-latest}
     container_name: book-saas-frontend
+
     restart: unless-stopped
+    pull_policy: always
+
     networks:
       - book-saas-network
+
     ports:
       - "3000:80"
+
+    mem_limit: 150m
+
     depends_on:
       - backend
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:80 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-# ── Networks ──────────────────────────────────────────────────────────────────
+# ── Networks ────────────────────────────────────────────────────────────────
 networks:
   book-saas-network:
     driver: bridge
     name: book-saas-network
 
-# ── Volumes ───────────────────────────────────────────────────────────────────
+# ── Volumes ─────────────────────────────────────────────────────────────────
 volumes:
   mongodb_data:
     name: book-saas-mongodb-data
+
   mongodb_config:
     name: book-saas-mongodb-config
+
   backend_uploads:
     name: book-saas-backend-uploads
+```
