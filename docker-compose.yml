@@ -22,7 +22,7 @@ services:
   # ── Backend (Flask + SocketIO) ──────────────────────────────────────────────
   backend:
     # Changed from 'build' to 'image' so it uses the version pushed by Jenkins
-    image: p2511/book-saas-backend:latest
+    image: prabal2611/book-saas-backend:latest
     container_name: book-saas-backend
     restart: unless-stopped
     env_file: .env  # This automatically pulls all vars from your .env file
@@ -47,7 +47,7 @@ services:
   # ── Frontend (React + Vite + Nginx) ─────────────────────────────────────────
   frontend:
     # Changed from 'build' to 'image'
-    image: p2511/book-saas-frontend:latest
+    image: prabal2611/book-saas-frontend:latest
     container_name: book-saas-frontend
     restart: unless-stopped
     networks:
